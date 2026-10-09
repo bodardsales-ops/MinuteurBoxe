@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timer de boxe</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --apron: #14215a;
+    --canvas: #f2efe6;
+    --red: #c8102e;
+    --blue: #1f5fbf;
+    --gold: #e3b341;
+    --ink: #0a0f2a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
+    background: var(--apron);
+    color: var(--canvas);
+    display: flex; flex-direction: column;
+    transition: background .5s ease;
+  }
+  body.round { background: var(--red); }
+  body.rest  { background: var(--blue); }
+  body.prep  { background: #3a3a3a; }
+  body.warn .clock { animation: pulse 1s steps(2) infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  @media (prefers-reduced-motion: reduce) { body.warn .clock { animation: none; } }
+
+  /* Les cordes du ring */
+  .ropes { height: 18px; display: grid; gap: 4px; padding-top: 6px; }
+  .ropes span { display: block; height: 3px; background: var(--canvas); opacity: .8; }
+
+  main {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px; text-align: center; gap: 12px;
+  }
+  .status { font-size: clamp(22px, 5vw, 40px); font-weight: 700; letter-spacing: .02em; }
+  .clock {
+    font-family: "Anton", Impact, sans-serif;
+    font-size: clamp(110px, 30vw, 340px);
+    line-height: .95; font-variant-numeric: tabular-nums;
+    color: var(--canvas);
+    text-shadow: 0 6px 0 rgba(0,0,0,.25);
+  }
+  .rounds { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 520px; min-height: 16px; }
+  .rounds i {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--canvas); display: block;
+  }
+  .rounds i.done { background: var(--canvas); }
+  .rounds i.now  { background: var(--gold); border-color: var(--gold); }
+
+  .settings { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+  .field {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    background: rgba(0,0,0,.22); padding: 12px 14px; border-radius: 6px;
+  }
+  .field label { font-size: 17px; font-weight: 500; }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper button {
+    width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--canvas);
+    background: transparent; color: var(--canvas); font-size: 22px; cursor: pointer; font-family: inherit;
+  }
+  .stepper output { font-family: "Anton", Impact, sans-serif; font-size: 30px; min-width: 64px; }
+
+  .controls { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    font-family: inherit; font-weight: 700; font-size: 24px;
+    padding: 14px 34px; border-radius: 999px; cursor: pointer;
+    border: 3px solid var(--canvas); background: transparent; color: var(--canvas);
+  }
+  .btn.main { background: var(--gold); border-color: var(--gold); color: var(--ink); }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+  .running .settings { display: none; }
+  .hint { font-size: 15px; opacity: .7; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="ropes" aria-hidden="true"><span></span><span></span><span></span></div>
+
+<main>
+  <div class="status" id="status">Prêt à combattre</div>
+  <div class="clock" id="clock">3:00</div>
+  <div class="rounds" id="rounds" aria-label="Progression des rounds"></div>
+
+  <div class="settings">
+    <div class="field">
+      <label>Rounds</label>
+      <div class="stepper">
+        <button data-k="rounds" data-d="-1" aria-label="Moins de rounds">−</button>
+        <output id="o-rounds"></output>
+        <button data-k="rounds" data-d="1" aria-label="Plus de rounds">+</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Durée du round</label>
+      <div class="stepper">
+        <button data-k="roundSec" data-d="-30" aria-label="Round plus court">−</button>
+        <output id="o-roundSec"></output>
+        <button data-k="roundSec" data-d="30" aria-label="Round plus long">+</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Repos</label>
+      <div class="stepper">
+        <button data-k="restSec" data-d="-15" aria-label="Repos plus court">−</button>
+        <output id="o-restSec"></output>
+        <button data-k="restSec" data-d="15" aria-label="Repos plus long">+</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn main" id="startBtn">Démarrer</button>
+    <button class="btn" id="resetBtn">Réinitialiser</button>
+    <button class="btn" id="testBtn">Tester le son</button>
+  </div>
+  <div class="hint">Espace : démarrer / pause · Claquette à 10 s de la fin</div>
+</main>
+
+<div class="ropes" aria-hidden="true"><span></span><span></span><span></span></div>
+
+<script>
+const cfg = { rounds: 3, roundSec: 180, restSec: 60 };
+const limits = { rounds: [1, 30], roundSec: [30, 600], restSec: [0, 300] };
+const PREP = 10, WARN = 10;
+
+let phase = 'idle';   // idle | prep | round | rest | done
+let current = 0, endAt = 0, remainingMs = 0, paused = false, timer = null, warned = false;
+let ctx = null, wakeLock = null;
+
+const $ = id => document.getElementById(id);
+const fmt = s => { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+
+/* ---------- Son : cloche de ring synthétisée ---------- */
+let unlocked = false;
+function silentWav() {
+  // petit fichier WAV silencieux généré à la volée
+  const n = 8000, b = new ArrayBuffer(44 + n), v = new DataView(b);
+  const w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true);
+  v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+}
+function audio() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!unlocked) {
+    unlocked = true;
+    // iPhone : joue le son même si le bouton silencieux est activé
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+    const el = new Audio(silentWav()); el.loop = true; el.volume = 0.01;
+    el.play().catch(() => {});
+    // réveille le moteur audio avec un son vide
+    const s = ctx.createBufferSource(); s.buffer = ctx.createBuffer(1, 1, 22050);
+    s.connect(ctx.destination); s.start(0);
+  }
+  if (ctx.state !== 'running') ctx.resume();
+  return ctx;
+}
+function bell(when = 0) {
+  const a = audio(), t = a.currentTime + when + .02;
+  const base = 740;
+  // partiels inharmoniques d'une cloche en laiton
+  const partials = [[1, 1, 2.4], [2.32, .6, 1.8], [2.97, .45, 1.4], [4.07, .3, 1.0], [5.43, .2, .7], [6.8, .12, .5]];
+  const out = a.createGain(); out.gain.value = .35; out.connect(a.destination);
+  partials.forEach(([r, amp, dec]) => {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'sine'; o.frequency.value = base * r;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(amp, t + .003);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dec);
+    o.connect(g).connect(out); o.start(t); o.stop(t + dec + .05);
+  });
+  // impact du marteau
+  const n = noise(a, .03), f = a.createBiquadFilter(), g = a.createGain();
+  f.type = 'highpass'; f.frequency.value = 2500; g.gain.value = .5;
+  n.connect(f).connect(g).connect(out); n.start(t);
+}
+function noise(a, dur) {
+  const buf = a.createBuffer(1, a.sampleRate * dur, a.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const s = a.createBufferSource(); s.buffer = buf; return s;
+}
+function clap(when = 0) {
+  const a = audio(), t = a.currentTime + when;
+  const n = noise(a, .06), f = a.createBiquadFilter(), g = a.createGain();
+  f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 1.2; g.gain.value = 1.4;
+  n.connect(f).connect(g).connect(a.destination); n.start(t);
+}
+const bells = (n, gap = .38) => { for (let i = 0; i < n; i++) bell(i * gap); };
+const claps = () => { clap(0); clap(.22); };
+
+/* ---------- Affichage ---------- */
+function renderSettings() {
+  $('o-rounds').textContent = cfg.rounds;
+  $('o-roundSec').textContent = fmt(cfg.roundSec);
+  $('o-restSec').textContent = cfg.restSec ? fmt(cfg.restSec) : 'Aucun';
+  if (phase === 'idle') $('clock').textContent = fmt(cfg.roundSec);
+  renderDots();
+}
+function renderDots() {
+  $('rounds').innerHTML = Array.from({ length: cfg.rounds }, (_, i) => {
+    const n = i + 1;
+    const cls = n < current || (n === current && phase === 'rest') || phase === 'done' ? 'done'
+              : n === current && phase === 'round' ? 'now' : '';
+    return `<i class="${cls}"></i>`;
+  }).join('');
+}
+function setPhase(p, secs) {
+  phase = p; warned = false;
+  document.body.className = p === 'idle' ? '' : p + ' running';
+  endAt = performance.now() + secs * 1000;
+  const labels = {
+    prep: 'Préparez-vous',
+    round: `Round ${current} / ${cfg.rounds}`,
+    rest: `Repos · prochain : round ${current + 1}`,
+    done: 'Fin du combat'
+  };
+  $('status').textContent = labels[p] || 'Prêt à combattre';
+  renderDots();
+}
+
+/* ---------- Logique ---------- */
+function tick() {
+  if (paused) return;
+  const left = (endAt - performance.now()) / 1000;
+  $('clock').textContent = fmt(left);
+
+  if (phase === 'round' && !warned && left <= WARN && cfg.roundSec > WARN) { warned = true; claps(); }
+  document.body.classList.toggle('warn', (phase === 'round' || phase === 'prep') && left <= WARN && left > 0);
+
+  if (left <= 0) next();
+}
+function next() {
+  if (phase === 'prep') {
+    current = 1; bell(); setPhase('round', cfg.roundSec);
+  } else if (phase === 'round') {
+    if (current >= cfg.rounds) { bells(5, .3); finish(); return; }
+    bells(3);
+    if (cfg.restSec > 0) setPhase('rest', cfg.restSec);
+    else { current++; setPhase('round', cfg.roundSec); }
+  } else if (phase === 'rest') {
+    current++; bell(); setPhase('round', cfg.roundSec);
+  }
+}
+function finish() {
+  clearInterval(timer); timer = null;
+  setPhase('done', 0);
+  document.body.className = '';
+  $('clock').textContent = '0:00';
+  $('startBtn').textContent = 'Recommencer';
+  releaseWake();
+}
+function start() {
+  audio();
+  if (phase === 'idle' || phase === 'done') {
+    current = 0; paused = false;
+    setPhase('prep', PREP);
+    timer = setInterval(tick, 100); tick();
+    $('startBtn').textContent = 'Pause';
+    requestWake();
+  } else if (!paused) {
+    paused = true; remainingMs = endAt - performance.now();
+    $('startBtn').textContent = 'Reprendre';
+    $('status').textContent += ' · en pause';
+  } else {
+    paused = false; endAt = performance.now() + remainingMs;
+    $('status').textContent = $('status').textContent.replace(' · en pause', '');
+    $('startBtn').textContent = 'Pause';
+  }
+}
+function reset() {
+  clearInterval(timer); timer = null; paused = false; current = 0;
+  phase = 'idle'; document.body.className = '';
+  $('status').textContent = 'Prêt à combattre';
+  $('startBtn').textContent = 'Démarrer';
+  renderSettings(); releaseWake();
+}
+
+/* Garde l'écran allumé pendant l'entraînement */
+async function requestWake() { try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {} }
+function releaseWake() { wakeLock?.release?.(); wakeLock = null; }
+
+document.querySelectorAll('.stepper button').forEach(b => b.addEventListener('click', () => {
+  const k = b.dataset.k, [lo, hi] = limits[k];
+  cfg[k] = Math.min(hi, Math.max(lo, cfg[k] + +b.dataset.d));
+  renderSettings();
+}));
+$('startBtn').addEventListener('click', start);
+$('resetBtn').addEventListener('click', reset);
+$('testBtn').addEventListener('click', () => { audio(); bell(.05); setTimeout(claps, 1500); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); start(); }
+});
+
+renderSettings();
+</script>
+</body>
+</html>
